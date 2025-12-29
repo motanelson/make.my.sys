@@ -14,38 +14,43 @@ echo "[1] create image ${SIZE_MB}MB..."
 dd if=/dev/zero of="$IMG" bs=1M count=$SIZE_MB status=progress
 
 echo "[2] format FAT12..."
-mkfs.fat -F 12 "$IMG"
+mkfs.fat -F 12 -n SYS12 "$IMG"
 
 echo "[3] install Syslinux..."
-syslinux "$IMG"
+syslinux -i "$IMG"
 
 echo "[4] create syslinux.cfg..."
 cat << EOF > syslinux.cfg
 DEFAULT kernel
 LABEL kernel
-    KERNEL kernel.c32
+    KERNEL kernel.bin
 EOF
 
-echo "[5] create fake kernel..."
+echo "[5] create kernel..."
 cat << EOF > kernel.asm
-bits 32
-global _start
-_start:
-mov eax,0x21cd4cff
-loop0:
-    jmp loop0
+BITS 16
+ORG 0x1000
+
+start:
+    mov ax, 0xb800
+    mov es, ax
+    xor di, di
+    mov cx, 2000
+    mov ax, 0x0741
+.fill:
+    stosw
+    loop .fill
+.hang:
+    jmp .hang
 EOF
 
 echo "[6] compile kernel..."
-nasm -f elf32 kernel.asm -o kernel.o
-ld -m elf_i386 -shared kernel.o -o kernel.c32
+nasm -f bin kernel.asm -o kernel.bin
 
-echo "[7] copy syslinux.cfg..."
+echo "[7] copy files..."
 mcopy -i "$IMG" syslinux.cfg ::/syslinux.cfg
+mcopy -i "$IMG" kernel.bin ::/kernel.bin
 
-echo "[8] copy kernel.com..."
-mcopy -i "$IMG" kernel.c32 ::/kernel.c32
-
-#rm -f syslinux.cfg kernel.asm kernel.com
+rm -f kernel.asm syslinux.cfg
 
 echo "[OK] image created: $IMG"
